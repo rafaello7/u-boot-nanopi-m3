@@ -11,6 +11,11 @@ config TARGET_ARTIK710_RAPTOR
 	help
 	  Support for artik710_raptor platform.
 
+config TARGET_S5P6818_NANOPIM3
+	bool "S5P6818_NANOPIM3"
+	help
+	  Support for s5p6818 NanoPI M3 platform.
+
 endchoice
 
 config SYS_VENDOR
@@ -24,4 +29,5 @@ config SYS_CONFIG_NAME
 	  should be included from include/config.h.
 
 source "board/s5p6818/drone/Kconfig"
+source "board/s5p6818/nanopim3/Kconfig"
 source "board/s5p6818/artik710_raptor/Kconfig"
