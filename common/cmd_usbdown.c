@@ -385,11 +385,16 @@ enum ep_type {
 
 /* EP0 state */
 enum ep0_state {
-	EP0_STATE_INIT			= 0,
-	EP0_STATE_GET_DSCPT		= 1,
-	EP0_STATE_GET_INTERFACE		= 2,
-	EP0_STATE_GET_CONFIG		= 3,
-	EP0_STATE_GET_STATUS		= 4
+	EP0_STATE_INIT			    = 0,
+	EP0_STATE_GET_DSCPT		    = 1,    // received GET_DESCRIPTOR request
+	EP0_STATE_GET_INTERFACE		= 2,    // received GET_INTERFACE request
+	EP0_STATE_GET_CONFIG		= 3,    // received GET_CONFIG request
+	EP0_STATE_GET_STATUS		= 4,    // received GET_STATUS request
+    EP0_STATE_SETUP_NODATA      = 5,    // received request not having DATA stage
+    EP0_STATE_SETUP_NODATA_SENT = 6,    // in STATUS stage: empty packet stored in TxFIFO
+    EP0_STATE_DATA_SENT         = 7,    // in DATA stage: descriptor stored in TxFIFO
+    EP0_STATE_DATA_SENT_ACK     = 8     // in DATA stage: descriptor sent + recv ACK
+
 };
 
 struct  nx_usbboot_status {
@@ -439,16 +444,224 @@ struct nx_guid {
 	u8  guid3[8];
 };
 
+#if 0
+#define LOGBUF_BEG ((unsigned*)0xffff0000)
+#define LOGBUF_END ((unsigned*)0xffffffe0)
+
+static unsigned *logbuf = LOGBUF_BEG;
+
+//#define dolog_mypr
+
+static void dolog_init(void)
+{
+    logbuf = LOGBUF_BEG;
+}
+
+static void dolog0(const char *fmt)
+{
+#ifdef dolog_mypr
+    printf(fmt);
+#endif
+    if( logbuf < LOGBUF_END )
+        *logbuf++ = (unsigned long)fmt & 0x3fffffff;
+}
+
+static void dolog1(const char *fmt, unsigned arg)
+{
+#ifdef dolog_mypr
+    printf(fmt, arg);
+#endif
+    if( logbuf < LOGBUF_END ) {
+        *logbuf++ = (unsigned long)fmt & 0x7fffffff;
+        *logbuf++ = arg;
+    }
+}
+
+static void dolog2(const char *fmt, unsigned arg1, unsigned arg2)
+{
+#ifdef dolog_mypr
+    printf(fmt, arg1, arg2);
+#endif
+    if( logbuf < LOGBUF_END ) {
+        *logbuf++ = ((unsigned long)fmt & 0x3fffffff) | 0x80000000;
+        *logbuf++ = arg1;
+        *logbuf++ = arg2;
+    }
+}
+
+static void dolog3(const char *fmt, unsigned arg1, unsigned arg2, unsigned arg3)
+{
+#ifdef dolog_mypr
+    printf(fmt, arg1, arg2, arg3);
+#endif
+    if( logbuf < LOGBUF_END ) {
+        *logbuf++ = (unsigned long)fmt | 0xc0000000;
+        *logbuf++ = arg1;
+        *logbuf++ = arg2;
+        *logbuf++ = arg3;
+    }
+}
+
+static void doerr0(const char *fmt)
+{
+    printf(fmt);
+    if( logbuf < LOGBUF_END )
+        *logbuf++ = (unsigned long)fmt & 0x3fffffff;
+}
+
+static void doerr1(const char *fmt, unsigned arg)
+{
+    printf(fmt, arg);
+    if( logbuf < LOGBUF_END ) {
+        *logbuf++ = (unsigned long)fmt & 0x7fffffff;
+        *logbuf++ = arg;
+    }
+}
+
+int do_udownlog(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+    unsigned *le = LOGBUF_BEG;
+    long addr;
+    unsigned arg1 = 0, arg2 = 0, arg3 = 0;
+
+    printf("\n\n\nlog entries: %d%s\n", (unsigned)(logbuf - le),
+            logbuf >= LOGBUF_END ? " (limit)" : "");
+    while( le < logbuf ) {
+        addr = (*le & 0x3fffffff) | 0x40000000;
+        argc = *le++ >> 30;
+        if( argc > 0 )
+            arg1 = *le++;
+        if( argc > 1 )
+            arg2 = *le++;
+        if( argc > 2 )
+            arg3 = *le++;
+        printf((const char*)addr, arg1, arg2, arg3);
+    }
+    printf("\n\n\n");
+    return 0;
+}
+
+U_BOOT_CMD(
+	udownlog, CONFIG_SYS_MAXARGS, 0, do_udownlog,
+	"dump logs from last udown",
+	"dumps debug logs from last execution of udown command"
+);
+
+static void printIntStatusFn(u32 int_status, u32 repeat, int isHandled)
+{
+    dolog0("int_status:");
+    if( int_status & INT_RESUME )
+        dolog0(" RESUME+31");
+    if( int_status & (1<<30) )
+        dolog0(" SESSREQ-30");
+    if( int_status & INT_DISCONN )
+        dolog0(" DISCON-29");
+    if( int_status & INT_CONN_ID_STS_CNG )
+        dolog0(" CONN_ID_STS_CNG-28");
+    if( int_status & (1<<27) )
+        dolog0(" 27");
+    if( int_status & (1<<26) )
+        dolog0(" 26");
+    if( int_status & (1<<25) )
+        dolog0(" 25");
+    if( int_status & (1<<24) )
+        dolog0(" 24");
+    if( int_status & (1<<23) )
+        dolog0(" 23");
+    if( int_status & (1<<22) )
+        dolog0(" 22");
+    if( int_status & (1<<21) )
+        dolog0(" 21");
+    if( int_status & (1<<20) )
+        dolog0(" 20");
+    if( int_status & INT_OUT_EP )
+        dolog0(" OUT_EP++19");
+    if( int_status & INT_IN_EP )
+        dolog0(" IN_EP++18");
+    if( int_status & (1<<17) )
+        dolog0(" 17");
+    if( int_status & (1<<16) )
+        dolog0(" 16");
+    if( int_status & (1<<15) )
+        dolog0(" 15");
+    if( int_status & (1<<14) )
+        dolog0(" 14");
+    if( int_status & INT_ENUMDONE )
+        dolog0(" ENUMDONE++13");
+    if( int_status & INT_RESET )
+        dolog0(" RESET++12");
+    if( int_status & INT_SUSPEND )
+        dolog0(" SUSPEND+11");
+    if( int_status & (1<<10) )
+        dolog0(" 10");
+    if( int_status & (1<<9) )
+        dolog0(" 9");
+    if( int_status & (1<<8) )
+        dolog0(" 8");
+    if( int_status & (1<<7) )
+        dolog0(" 7");
+    if( int_status & (1<<6) )
+        dolog0(" 6");
+    if( int_status & INT_TX_FIFO_EMPTY )
+        dolog0(" TX_FIFO_EMPTY-5");
+    if( int_status & INT_RX_FIFO_NOT_EMPTY )
+        dolog0(" RX_FIFO_NOT_EMPTY++4");
+    if( int_status & INT_SOF )
+        dolog0(" SOF-3");
+    if( int_status & (1<<2) )
+        dolog0(" 2");
+    if( int_status & INT_HOST_MODE )
+        dolog0(" HOST_MODE-1");
+    if( int_status & INT_DEV_MODE )
+        dolog0(" DEV_MODE-0");
+    if( repeat > 1 )
+        dolog1(" -- repeated %u times", repeat);
+    if( isHandled )
+        dolog0(" (handled)\n");
+    else
+        dolog0(" (ignored)\n");
+}
+
+static void print_int_status(u32 int_status, int isHandled)
+{
+    static u32 int_status_prev, repeat, isHandledPrev;
+
+    if( ! isHandled && int_status == int_status_prev ) {
+        if( ++repeat >= 10000000 ) {
+            printIntStatusFn(int_status, repeat, isHandled);
+            repeat = 0;
+        }
+    }else{
+        if( repeat )
+            printIntStatusFn(int_status_prev, repeat, isHandledPrev);
+        if( int_status )
+            printIntStatusFn(int_status, 1, isHandled);
+        int_status_prev = int_status;
+        repeat = 0;
+        isHandledPrev = isHandled;
+    }
+}
+#else
+#define dolog_init()
+#define dolog0(arg)
+#define dolog1(arg1, arg2)
+#define dolog2(arg1, arg2, arg3)
+#define dolog3(arg1, arg2, arg3, arg4)
+#define doerr0 printf
+#define doerr1 printf
+#define print_int_status(int_status, isHandled)
+#endif
+
 void cal_usbid(u16 *vid, u16 *pid, u32 ecid)
 {
 	if (ecid == 0) {   /* ecid is not burned */
 		*vid = VENDORID;
 		*pid = PRODUCTID;
-		debug("\nECID Null!!\nVID %x, PID %x\n", *vid, *pid);
+		dolog2("\nECID Null!!\nVID %x, PID %x\n", *vid, *pid);
 	} else {
 		*vid = (ecid >> 16)&0xFFFF;
 		*pid = (ecid >> 0)&0xFFFF;
-		debug("VID %x, PID %x\n", *vid, *pid);
+		dolog2("  VID %x, PID %x\n", *vid, *pid);
 	}
 }
 
@@ -644,12 +857,23 @@ static const u8	gs_config_descriptor_hs[CONFIG_DESCRIPTOR_SIZE]
 						   (4ms/bit=time,500ms) */
 };
 
-static void nx_usb_write_in_fifo(u32 ep, u8 *buf, s32 num)
+
+static void ep0txwait(void)
+{
+    unsigned i = 0, dieptsiz;
+
+    do {
+        dieptsiz = readl(&nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
+        ++i;
+    }while( dieptsiz != 0 );
+}
+
+static void nx_usb_write_in_fifo(u32 ep, u8 *buf, u32 num)
 {
 	s32 i;
-	u32 *dwbuf = (u32 *)buf;		/* assume all data ptr is 4
-						   bytes aligned */
-	for (i = 0; i < (num + 3) / 4; i++)
+	u32 *dwbuf = (u32 *)buf;
+    num = (num+3) >> 2;
+	for (i = 0; i < num; i++)
 		writel(dwbuf[i], &nx_otgreg->epfifo[ep][0]);
 }
 
@@ -657,8 +881,11 @@ static void nx_usb_read_out_fifo(u32 ep, u8 *buf, s32 num)
 {
 	s32 i;
 	u32 *dwbuf = (u32 *)buf;
-	for (i = 0; i < (num + 3) / 4; i++)
-		dwbuf[i] = readl(&nx_otgreg->epfifo[ep][0]);
+    unsigned *addr = &nx_otgreg->epfifo[ep][0];
+
+	for (i = 0; i < (num + 3) / 4; i++) {
+		dwbuf[i] = readl(addr);
+    }
 }
 
 static void nx_usb_ep0_int_hndlr(void)
@@ -667,45 +894,45 @@ static void nx_usb_ep0_int_hndlr(void)
 	struct nx_setup_packet *setup_packet = (struct nx_setup_packet *)buf;
 	u16 addr;
 
-	debug("Event EP0\n");
+	//dolog0("Event EP0\n");
 	dmb();
 
 	if (usbboot_status->ep0_state == EP0_STATE_INIT) {
 		buf[0] = readl(&nx_otgreg->epfifo[CONTROL_EP][0]);
 		buf[1] = readl(&nx_otgreg->epfifo[CONTROL_EP][0]);
 
-		debug("Req: %x  %x %d %x %d\n",
-		      setup_packet->requesttype,
-		      setup_packet->request,
-		      setup_packet->value,
-		      setup_packet->index,
-		      setup_packet->length);
 
 		switch (setup_packet->request) {
 		case STANDARD_SET_ADDRESS:
 			/* Set Address Update bit */
 			addr = (setup_packet->value & 0xFF);
-			debug("STANDARD_SET_ADDRESS: %x ", addr);
+			dolog1("  std SET_ADDRESS: %x\n", addr);
 			writel(1 << 18 | addr << 4 |
 				usbboot_status->speed << 0,
 				&nx_otgreg->dcsr.dcfg);
-			usbboot_status->ep0_state = EP0_STATE_INIT;
-
+			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+            dolog0("  ep0_state set to NODATA\n");
 			break;
 
 		case STANDARD_SET_DESCRIPTOR:
-			debug("STANDARD_SET_DESCRIPTOR\n");
+			printf("  (warn) got std SET_DESCRIPTOR\n");
+			dolog0("  std SET_DESCRIPTOR\n");
+			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+            dolog0("  ep0_state set to NODATA\n");
 			break;
 
 		case STANDARD_SET_CONFIGURATION:
-			debug("STANDARD_SET_CONFIGURATION\n");
+			dolog0("  std SET_CONFIGURATION\n");
 			/* Configuration value in configuration descriptor */
 			usbboot_status->cur_config = setup_packet->value;
-			usbboot_status->ep0_state = EP0_STATE_INIT;
+			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+            dolog0("  ep0_state set to NODATA\n");
+			//printf("  (info) got std SET_CONFIGURATION\n");
 			break;
 
+#if 0
 		case STANDARD_GET_CONFIGURATION:
-			debug("STANDARD_GET_CONFIGURATION\n");
+			dolog0("  std GET_CONFIGURATION\n");
 			writel((1<<19)|(1<<0),
 			       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
 			/*ep0 enable, clear nak, next ep0, 8byte */
@@ -715,83 +942,83 @@ static void nx_usb_ep0_int_hndlr(void)
 			       &nx_otgreg->epfifo[CONTROL_EP][0]);
 			usbboot_status->ep0_state = EP0_STATE_INIT;
 			break;
+#endif
 
 		case STANDARD_GET_DESCRIPTOR:
-			debug("STANDARD_GET_DESCRIPTOR :");
 			usbboot_status->remain_size =
 				(u32)setup_packet->length;
-			debug("0");
 			switch (setup_packet->value>>8) {
 			case DESCRIPTORTYPE_DEVICE:
+                dolog0("  std device descriptor\n");
 				usbboot_status->current_ptr =
 					(u8 *)usbboot_status->device_descriptor;
-				debug("1");
 				usbboot_status->current_fifo_size =
 					usbboot_status->ctrl_max_pktsize;
-				debug("2");
 				if (usbboot_status->remain_size
 				   > DEVICE_DESCRIPTOR_SIZE)
 					usbboot_status->remain_size =
 						DEVICE_DESCRIPTOR_SIZE;
 				usbboot_status->ep0_state = EP0_STATE_GET_DSCPT;
-				debug("3");
+                dolog0("  ep0_state set to GET_DSCPT\n");
 				break;
 
 			case DESCRIPTORTYPE_CONFIGURATION:
+                dolog0("  std config descriptor\n");
 				usbboot_status->current_ptr =
 					(u8 *)usbboot_status->config_descriptor;
-				debug("4");
 				usbboot_status->current_fifo_size =
 					usbboot_status->ctrl_max_pktsize;
-				debug("5");
 				if (usbboot_status->remain_size
 				   > CONFIG_DESCRIPTOR_SIZE)
 					usbboot_status->remain_size =
 						CONFIG_DESCRIPTOR_SIZE;
 				usbboot_status->ep0_state = EP0_STATE_GET_DSCPT;
-				debug("6");
+                dolog0("  ep0_state set to GET_DSCPT\n");
 				break;
 			default:
+                dolog0("  std ?? descriptor\n");
 				writel(readl(&nx_otgreg->dcsr.depir[0].diepctl)
 				       | DEPCTL_STALL,
 				       &nx_otgreg->dcsr.depir[0].diepctl);
 				break;
 			}
-
-			debug("7");
 			break;
 
 		case STANDARD_CLEAR_FEATURE:
-			debug("STANDARD_CLEAR_FEATURE :");
+			dolog0("  std CLEAR_FEATURE\n");
+			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+            dolog0("  ep0_state set to NODATA\n");
 			break;
 
 		case STANDARD_SET_FEATURE:
-			debug("STANDARD_SET_FEATURE :");
+			dolog0("  std SET_FEATURE\n");
+			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+            dolog0("  ep0_state set to NODATA\n");
 			break;
 
 		case STANDARD_GET_STATUS:
-			debug("STANDARD_GET_STATUS :");
+			dolog0("  std GET_STATUS\n");
 			usbboot_status->ep0_state = EP0_STATE_GET_STATUS;
+            dolog0("  ep0_state set to GET_STATUS\n");
 			break;
 
 		case STANDARD_GET_INTERFACE:
-			debug("STANDARD_GET_INTERFACE\n");
+			dolog0("  std GET_INTERFACE\n");
 			usbboot_status->ep0_state = EP0_STATE_GET_INTERFACE;
+            dolog0("  ep0_state set to GET_INTERFACE\n");
 			break;
 
 		case STANDARD_SET_INTERFACE:
-			debug("STANDARD_SET_INTERFACE\n");
+			dolog0("  std SET_INTERFACE\n");
 			usbboot_status->cur_interface = setup_packet->value;
 			usbboot_status->cur_setting = setup_packet->value;
-			usbboot_status->ep0_state = EP0_STATE_INIT;
-			break;
-
-		case STANDARD_SYNCH_FRAME:
-			debug("STANDARD_SYNCH_FRAME\n");
-			usbboot_status->ep0_state = EP0_STATE_INIT;
+			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+            dolog0("  ep0_state set to NODATA\n");
 			break;
 
 		default:
+			dolog1("  std ?? (%d)\n", setup_packet->request);
+			printf("  got std ?? (%d)\n", setup_packet->request);
 			break;
 		}
 	}
@@ -814,17 +1041,24 @@ static void nx_usb_transfer_ep0(void)
 {
 	switch (usbboot_status->ep0_state) {
 	case EP0_STATE_INIT:
+		dolog0("  EP0_STATE_INIT - STALL!\n");
+        writel(readl(&nx_otgreg->dcsr.depir[CONTROL_EP].diepctl)
+               | DEPCTL_STALL,
+               &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
+        break;
+	case EP0_STATE_SETUP_NODATA:
+		dolog0("  EP0_STATE_SETUP_NODATA (send empty packet)\n");
 		writel((1<<19)|(0<<0),
 		       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
 		/*ep0 enable, clear nak, next ep0, 8byte */
 		writel(EPEN_CNAK_EP0_8,
 		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-		debug("EP0_STATE_INIT\n");
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA_SENT;
 		break;
 
 	/* GET_DESCRIPTOR:DEVICE */
 	case EP0_STATE_GET_DSCPT:
-		debug("EP0_STATE_GD_DEV_0 :");
+		dolog0("  storing descriptor in TxFIFO\n");
 		if (usbboot_status->speed == USB_HIGH) {
 			/*ep0 enable, clear nak, next ep0, max 64byte */
 			writel(EPEN_CNAK_EP0_64,
@@ -840,7 +1074,6 @@ static void nx_usb_transfer_ep0(void)
 			nx_usb_write_in_fifo(CONTROL_EP,
 					     usbboot_status->current_ptr,
 					     usbboot_status->remain_size);
-			usbboot_status->ep0_state = EP0_STATE_INIT;
 		} else {
 			writel((1<<19)|(usbboot_status->current_fifo_size<<0),
 			       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
@@ -852,13 +1085,13 @@ static void nx_usb_transfer_ep0(void)
 			usbboot_status->current_ptr +=
 				usbboot_status->current_fifo_size;
 		}
+        ep0txwait();    // avoiding spurious TxFIFO empty interrupt
+        usbboot_status->ep0_state = EP0_STATE_DATA_SENT;
 		break;
 
 	case EP0_STATE_GET_INTERFACE:
 	case EP0_STATE_GET_CONFIG:
-	case EP0_STATE_GET_STATUS:
-		debug("EP0_STATE_INTERFACE_GET\n");
-		debug("EP0_STATE_GET_STATUS\n");
+		dolog0("EP0_STATE_GET_..\n");
 
 		writel((1<<19)|(1<<0),
 		       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
@@ -868,15 +1101,31 @@ static void nx_usb_transfer_ep0(void)
 		if (usbboot_status->ep0_state == EP0_STATE_GET_INTERFACE)
 			writel(usbboot_status->cur_interface,
 			       &nx_otgreg->epfifo[CONTROL_EP][0]);
-		else if (usbboot_status->ep0_state == EP0_STATE_GET_CONFIG)
+        else
 			writel(usbboot_status->cur_config,
 			       &nx_otgreg->epfifo[CONTROL_EP][0]);
-		else
-			writel(0, &nx_otgreg->epfifo[CONTROL_EP][0]);
-		usbboot_status->ep0_state = EP0_STATE_INIT;
+        usbboot_status->ep0_state = EP0_STATE_DATA_SENT;
 		break;
+	case EP0_STATE_GET_STATUS:
+		dolog0("EP0_STATE_GET_STATUS\n");
 
+		writel((1<<19)|(2<<0),
+		       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
+		writel(EPEN_CNAK_EP0_8,
+		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
+
+        writel(0, &nx_otgreg->epfifo[CONTROL_EP][0]);
+        usbboot_status->ep0_state = EP0_STATE_DATA_SENT;
+		break;
+    case EP0_STATE_DATA_SENT:
+        doerr0("ERROR! spurious Tx req on DATA_SENT\n");
+        break;
+    case EP0_STATE_SETUP_NODATA_SENT:
+        doerr0("ERROR! spurious Tx req on NODATA_SENT\n");
+        break;
 	default:
+        doerr1("ERROR! SETUP with IN data ep0_state=%d\n",
+                usbboot_status->ep0_state);
 		break;
 	}
 }
@@ -887,7 +1136,7 @@ static void nx_usb_int_bulkin(void)
 	u8 *bulkin_buf;
 	u32 remain_cnt;
 
-	debug("Bulk In Function\n");
+	dolog0("Bulk In Function\n");
 
 	bulkin_buf = (u8 *)usbboot_status->up_ptr;
 	remain_cnt = usbboot_status->up_size -
@@ -937,7 +1186,7 @@ static void nx_usb_int_bulkout(u32 fifo_cnt_byte)
 	usbboot_status->rx_size -= fifo_cnt_byte;
 
 	if (usbboot_status->rx_size <= 0) {
-		debug("Download completed!\n");
+		dolog0("Download completed!\n");
 
 		usbboot_status->downloading = false;
 	}
@@ -953,12 +1202,15 @@ static void nx_usb_int_bulkout(u32 fifo_cnt_byte)
 static void nx_usb_reset(void)
 {
 	u32 i;
+
+    dolog0("  nx_usb_reset\n");
 	/* set all out ep nak */
 	for (i = 0; i < 16; i++)
 		writel(readl(&nx_otgreg->dcsr.depor[i].doepctl) | DEPCTL_SNAK,
 		       &nx_otgreg->dcsr.depor[i].doepctl);
 
 	usbboot_status->ep0_state = EP0_STATE_INIT;
+    dolog0("  ep0_state set to INIT\n");
 	writel(((1<<BULK_OUT_EP)|(1<<CONTROL_EP))<<16 |
 		((1<<BULK_IN_EP)|(1<<CONTROL_EP)),
 	       &nx_otgreg->dcsr.daintmsk);
@@ -994,11 +1246,11 @@ static bool nx_usb_set_init(void)
 
 	/* Set if Device is High speed or Full speed */
 	if (((status & 0x6) >> 1) == USB_HIGH) {
-		debug("High Speed Detection\n");
+		dolog0("  High Speed Detection\n");
 	} else if (((status & 0x6) >> 1) == USB_FULL) {
-		debug("Full Speed Detection\n");
+		dolog0("  Full Speed Detection\n");
 	} else {
-		debug("**** Error:Neither High_Speed nor Full_Speed\n");
+		dolog0("**** Error:Neither High_Speed nor Full_Speed\n");
 		return false;
 	}
 
@@ -1013,7 +1265,7 @@ static bool nx_usb_set_init(void)
 	 * READ ECID for Product and Vendor ID
 	 */
 	get_usbid(&VID, &PID);
-	debug("%s %x %x\n", __func__, VID, PID);
+	dolog2("  nx_usb_set_init %x %x\n", VID, PID);
 	gs_device_descriptor_fs[8] = (u8)(VID & 0xff);
 	gs_device_descriptor_hs[8] = gs_device_descriptor_fs[8];
 	gs_device_descriptor_fs[9] = (u8)(VID >> 8);
@@ -1093,11 +1345,44 @@ static void nx_usb_pkt_receive(void)
 	rx_status = readl(&nx_otgreg->gcsr.grxstsp);
 
 	if ((rx_status & (0xf<<17)) == SETUP_PKT_RECEIVED) {
-		debug("SETUP_PKT_RECEIVED\n");
+		dolog0("  rx fifo: SETUP_PKT_RECEIVED (got SETUP token + data)\n");
+        switch( usbboot_status->ep0_state ) {
+        case EP0_STATE_INIT:
+            break;
+        case EP0_STATE_SETUP_NODATA_SENT:
+            doerr0("WARN: lost ACK of IN transaction in STATUS stage\n");
+            usbboot_status->ep0_state = EP0_STATE_INIT;
+            dolog0("  ep0_state set to INIT\n");
+            break;
+        default:
+            doerr1("ERROR! SETUP pkt ep0_state=%d\n",
+                    usbboot_status->ep0_state);
+            break;
+        }
 		nx_usb_ep0_int_hndlr();
 	} else if ((rx_status & (0xf<<17)) == OUT_PKT_RECEIVED) {
 		fifo_cnt_byte = (rx_status & 0x7ff0)>>4;
-		debug("OUT_PKT_RECEIVED\n");
+		dolog1("  rx fifo: OUT_PKT_RECEIVED (%d bytes)\n", fifo_cnt_byte);
+        if( (rx_status & 0xf) == 0 ) {  // CONTROL_EP
+            if( fifo_cnt_byte == 0 ) {
+                switch( usbboot_status->ep0_state ) {
+                case EP0_STATE_DATA_SENT:
+                    doerr0("WARN: lost ACK in DATA stage\n");
+                    /* no break */
+                case EP0_STATE_DATA_SENT_ACK:
+                    dolog0("  ep0_state set to INIT\n");
+                    usbboot_status->ep0_state = EP0_STATE_INIT;
+                    break;
+                default:
+                    doerr1("ERROR! OUT pkt ep0_state=%d\n",
+                            usbboot_status->ep0_state);
+                    break;
+                }
+            }else{
+                doerr1("ERROR! SETUP pkt with OUT data, ep0_state=%d\n",
+                        usbboot_status->ep0_state);
+            }
+        }
 
 		if ((rx_status & BULK_OUT_EP) && (fifo_cnt_byte)) {
 			nx_usb_int_bulkout(fifo_cnt_byte);
@@ -1108,13 +1393,14 @@ static void nx_usb_pkt_receive(void)
 			return;
 		}
 	} else if ((rx_status & (0xf<<17)) == GLOBAL_OUT_NAK) {
-		debug("GLOBAL_OUT_NAK\n");
+		dolog0("  rx fifo: GLOBAL_OUT_NAK\n");
 	} else if ((rx_status & (0xf<<17)) == OUT_TRNASFER_COMPLETED) {
-		debug("OUT_TRNASFER_COMPLETED\n");
+		dolog0("  rx fifo: OUT_TRANSFER_COMPLETED "
+                "(i.e. bulk recv + ACK sent)\n");
 	} else if ((rx_status & (0xf<<17)) == SETUP_TRANSACTION_COMPLETED) {
-		debug("SETUP_TRANSACTION_COMPLETED\n");
+		dolog0("  rx fifo: SETUP_TRANSACTION_COMPLETED (i.e. ACK sent)\n");
 	} else {
-		debug("Reserved\n");
+		dolog0("  rx fifo: Reserved\n");
 	}
 	dmb();
 }
@@ -1126,10 +1412,15 @@ static void nx_usb_transfer(void)
 
 	ep_int = readl(&nx_otgreg->dcsr.daint);
 
+    dolog3("  ep_int: out=0x%x, in=0x%x state=%d\n",
+            ep_int >> 16, ep_int & 0xffff, usbboot_status->ep0_state);
 	if (ep_int & (1<<CONTROL_EP)) {
 		ep_int_status =
 			readl(&nx_otgreg->dcsr.depir[CONTROL_EP].diepint);
 
+        dolog1("  diepint0=%x (0x1 - send compl. (+recv ACK),"
+                " 0x10 - IN token recv when TxFIFO empty)\n",
+                ep_int_status);
 		if (ep_int_status & INTKN_TXFEMP) {
 			while (1) {
 				if (!((readl(&nx_otgreg->gcsr.gnptxsts) &
@@ -1139,6 +1430,23 @@ static void nx_usb_transfer(void)
 			}
 			nx_usb_transfer_ep0();
 		}
+        if( ep_int_status & TRANSFER_DONE ) {
+            u32 ep0_state = usbboot_status->ep0_state;
+            switch( ep0_state ) {
+            case EP0_STATE_DATA_SENT:
+                /* received ACK - awaiting OUT transaction */
+                dolog0("  ep0_state set to DATA SENT_ACK\n");
+                usbboot_status->ep0_state = EP0_STATE_DATA_SENT_ACK;
+                break;
+            case EP0_STATE_SETUP_NODATA_SENT:
+                /* received ACK on IN transaction in STATUS stage */
+                dolog0("  ep0_state set to INIT\n");
+                usbboot_status->ep0_state = EP0_STATE_INIT;
+                break;
+            default:
+                doerr1("ERROR! TRANSFER_DONE ep0_state=%d\n", ep0_state);
+            }
+        }
 
 		writel(ep_int_status,
 		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepint);
@@ -1147,7 +1455,9 @@ static void nx_usb_transfer(void)
 	if (ep_int & ((1<<CONTROL_EP)<<16)) {
 		ep_int_status =
 			readl(&nx_otgreg->dcsr.depor[CONTROL_EP].doepint);
-
+        dolog1("  doepint0=0x%x (0x1 - recv. completed, +sent ACK),"
+                " 0x8 - SETUP phase done (+sent ACK))\n",
+                ep_int_status);
 		writel((1<<29)|(1<<19)|(8<<0),
 		       &nx_otgreg->dcsr.depor[CONTROL_EP].doeptsiz);
 		/*ep0 enable, clear nak */
@@ -1184,16 +1494,35 @@ static void nx_udc_int_hndlr(void)
 	u32 int_status;
 	bool tmp;
 
-	int_status = readl(&nx_otgreg->gcsr.gintsts); /* Core Interrupt Register
-							*/
+	int_status = readl(&nx_otgreg->gcsr.gintsts); /* Core Interrupt Register */
+
+	if ((int_status & INT_IN_EP) || (int_status & INT_OUT_EP)) {
+		//dolog0("INT_IN or OUT_EP\n");
+		/* Read only register field */
+		nx_usb_transfer();
+	}
+
+	if (int_status & INT_RX_FIFO_NOT_EMPTY) {
+		//dolog0("INT_RX_FIFO_NOT_EMPTY\n");
+		/* Read only register field */
+
+        if (int_status & (INT_IN_EP | INT_OUT_EP))
+            dolog0("  --\n");
+		writel(INT_RESUME|INT_OUT_EP|INT_IN_EP|
+			INT_ENUMDONE|INT_RESET|INT_SUSPEND,
+		       &nx_otgreg->gcsr.gintmsk);
+		nx_usb_pkt_receive();
+		writel(INT_RESUME|INT_OUT_EP|INT_IN_EP|
+			INT_ENUMDONE|INT_RESET|INT_SUSPEND|
+			INT_RX_FIFO_NOT_EMPTY, &nx_otgreg->gcsr.gintmsk);
+	}
 
 	if (int_status & INT_RESET) {
-		debug("INT_RESET\n");
 		nx_usb_reset();
 	}
 
 	if (int_status & INT_ENUMDONE) {
-		debug("INT_ENUMDONE :");
+		//dolog0("INT_ENUMDONE\n");
 
 		tmp = nx_usb_set_init();
 		if (!tmp) {
@@ -1204,32 +1533,13 @@ static void nx_udc_int_hndlr(void)
 	}
 
 	if (int_status & INT_RESUME)
-		debug("INT_RESUME\n");
+		dolog0("  INT_RESUME\n");
+
 
 	if (int_status & INT_SUSPEND)
-		debug("INT_SUSPEND\n");
+		dolog0("  INT_SUSPEND\n");
 
-	if (int_status & INT_RX_FIFO_NOT_EMPTY) {
-		debug("INT_RX_FIFO_NOT_EMPTY\n");
-		/* Read only register field */
-
-		writel(INT_RESUME|INT_OUT_EP|INT_IN_EP|
-			INT_ENUMDONE|INT_RESET|INT_SUSPEND,
-		       &nx_otgreg->gcsr.gintmsk);
-		nx_usb_pkt_receive();
-		writel(INT_RESUME|INT_OUT_EP|INT_IN_EP|
-			INT_ENUMDONE|INT_RESET|INT_SUSPEND|
-			INT_RX_FIFO_NOT_EMPTY, &nx_otgreg->gcsr.gintmsk);
-	}
-
-	if ((int_status & INT_IN_EP) || (int_status & INT_OUT_EP)) {
-		debug("INT_IN or OUT_EP\n");
-		/* Read only register field */
-		nx_usb_transfer();
-	}
 	writel(int_status, &nx_otgreg->gcsr.gintsts); /* Interrupt Clear */
-	debug("[GINTSTS:0x%08x:0x%08x]\n", int_status,
-	      (WKUP_INT|OEP_INT|IEP_INT|ENUM_DONE|USB_RST|USB_SUSP|RXF_LVL));
 }
 
 /* Nexell USBOTG PHY registers */
@@ -1284,7 +1594,7 @@ void nx_otg_phy_init(void)
 	u32 reg;
 
 	/* USB PHY0 Enable */
-	debug("USB PHY0 Enable\n");
+	dolog0("USB PHY0 Enable\n");
 
 	writel(readl(phy + NX_OTG_CON3) & ~NX_OTG_CON3_DET_N_CHG,
 	       phy + NX_OTG_CON3);
@@ -1332,7 +1642,7 @@ void nx_otg_phy_off(void)
 	void __iomem *phy = (void __iomem *)PHY_BASEADDR_TIEOFF;
 
 	/* USB PHY0 Disable */
-	debug("USB PHY0 Disable\n");
+	dolog0("USB PHY0 Disable\n");
 
 	writel(readl(phy + NX_OTG_CON1) | NX_OTG_CON1_VBUS_VLDEXT0,
 	       phy + NX_OTG_CON1);
@@ -1356,6 +1666,8 @@ void nx_otg_phy_off(void)
 bool iusbboot(void)
 {
 	unsigned int *nsih;
+    u32 int_status, isHandled;
+    bool downloaded = false;
 
 	nsih = (unsigned int *)usbboot_status->rx_buf_addr;
 
@@ -1413,6 +1725,7 @@ bool iusbboot(void)
 	usbboot_status->cur_setting = 0;
 	usbboot_status->speed = USB_HIGH;
 	usbboot_status->ep0_state = EP0_STATE_INIT;
+    dolog0("ep0_state set to INIT\n");
 
 	usbboot_status->downloading = true;
 
@@ -1421,13 +1734,14 @@ bool iusbboot(void)
 	while (usbboot_status->downloading) {
 		if (ctrlc())
 			goto _exit;
-
-		if (readl(&nx_otgreg->gcsr.gintsts) &
-		    (WKUP_INT|OEP_INT|IEP_INT|ENUM_DONE|USB_RST|USB_SUSP|
-		     RXF_LVL)) {
+        int_status = readl(&nx_otgreg->gcsr.gintsts);
+        isHandled = int_status &
+            (WKUP_INT|OEP_INT|IEP_INT|ENUM_DONE|USB_RST|USB_SUSP|RXF_LVL);
+        print_int_status(int_status, isHandled);
+		if( isHandled ) {
 			nx_udc_int_hndlr();
-			writel(0xFFFFFFFF, &nx_otgreg->gcsr.gintsts);
-			mdelay(3);
+			//writel(0xFFFFFFFF, &nx_otgreg->gcsr.gintsts);
+			//mdelay(3);
 		}
 	}
 
@@ -1437,21 +1751,26 @@ bool iusbboot(void)
 	usbboot_status->downloading = true;
 	printf(" Size  %d(hex : %x)\n", usbboot_status->rx_size,
 	       usbboot_status->rx_size);
+	dolog2(" Size  %d(hex : %x)\n", usbboot_status->rx_size,
+	       usbboot_status->rx_size);
 	dmb();
 
 	while (usbboot_status->downloading) {
 		if (ctrlc())
 			goto _exit;
 
-		if (readl(&nx_otgreg->gcsr.gintsts) &
-		    (WKUP_INT|OEP_INT|IEP_INT|ENUM_DONE|USB_RST|USB_SUSP|
-		     RXF_LVL)) {
+        int_status = readl(&nx_otgreg->gcsr.gintsts);
+        isHandled = int_status &
+            (WKUP_INT|OEP_INT|IEP_INT|ENUM_DONE|USB_RST|USB_SUSP|RXF_LVL);
+        print_int_status(int_status, isHandled);
+		if( isHandled ) {
 			nx_udc_int_hndlr();
 			writel(0xFFFFFFFF, &nx_otgreg->gcsr.gintsts);
 		}
 	}
-
+    downloaded = true;
 _exit:
+    print_int_status(0, 0);
 	dmb();
 	/* usb core soft reset */
 	writel(CORE_SOFT_RESET, &nx_otgreg->gcsr.grstctl);
@@ -1462,13 +1781,14 @@ _exit:
 
 	nx_otg_phy_off();
 
-	return true;
+	return downloaded;
 }
 
 int do_usbdown(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	int addr;
 	struct nx_usbboot_status status;
+    bool complete;
 
 	usbboot_status = &status;
 	addr = simple_strtoul(argv[1], NULL, 16);
@@ -1476,13 +1796,16 @@ int do_usbdown(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	if (addr < 0x40000000)
 		goto usage;
 
+    dolog_init();
 	printf("Download Address %x", addr);
 	usbboot_status->rx_buf_addr = (u8 *)((ulong)addr);
-	iusbboot();
+	complete = iusbboot();
 	flush_dcache_all();
-	printf("Download complete\n");
-	return 0;
-
+    if( complete )
+        printf("Download complete\n");
+    else
+        printf(" interrupted\n");
+    return !complete;
 usage:
 	cmd_usage(cmdtp);
 	return 1;
