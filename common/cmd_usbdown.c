@@ -323,7 +323,7 @@ struct nx_usb_otg_registerset {
 /* NX_OTG_GRXSTSP STATUS*/
 #define GLOBAL_OUT_NAK			(0x1<<17)
 #define OUT_PKT_RECEIVED		(0x2<<17)
-#define OUT_TRNASFER_COMPLETED		(0x3<<17)
+#define OUT_TRANSFER_COMPLETED		(0x3<<17)
 #define SETUP_TRANSACTION_COMPLETED	(0x4<<17)
 #define SETUP_PKT_RECEIVED		(0x6<<17)
 
@@ -385,16 +385,14 @@ enum ep_type {
 
 /* EP0 state */
 enum ep0_state {
-	EP0_STATE_INIT			    = 0,
-	EP0_STATE_GET_DSCPT		    = 1,    // received GET_DESCRIPTOR request
-	EP0_STATE_GET_INTERFACE		= 2,    // received GET_INTERFACE request
-	EP0_STATE_GET_CONFIG		= 3,    // received GET_CONFIG request
-	EP0_STATE_GET_STATUS		= 4,    // received GET_STATUS request
-    EP0_STATE_SETUP_NODATA      = 5,    // received request not having DATA stage
-    EP0_STATE_SETUP_NODATA_SENT = 6,    // in STATUS stage: empty packet stored in TxFIFO
-    EP0_STATE_DATA_SENT         = 7,    // in DATA stage: descriptor stored in TxFIFO
-    EP0_STATE_DATA_SENT_ACK     = 8     // in DATA stage: descriptor sent + recv ACK
-
+	EP0_STATE_INIT,
+	EP0_STATE_SETUP_DATAIN,	            // SETUP stage, expect DATA IN
+	EP0_STATE_DATA_DATAIN,	            // DATA stage, expect next DATA IN
+    EP0_STATE_SETUP_NODATA,             // SETUP stage, don't expect DATA stage
+    EP0_STATE_NODATA_SENT,              // empty IN packet stored in TxFIFO
+    EP0_STATE_DATAIN_SENT,              // IN data put in TxFIFO
+    EP0_STATE_DATAIN_SENT_ACK           // last DATA "IN" sent + got ACK
+                                        // (expect OUT STATUS transaction)
 };
 
 struct  nx_usbboot_status {
@@ -411,6 +409,9 @@ struct  nx_usbboot_status {
 	u8		*current_ptr;
 	u32		current_fifo_size;
 	u32		remain_size;
+    u32     lastpkt_size;       // In DATAIN_SENT state: number of bytes
+                                // stored in TX fifo
+    u8      pktbuf[4];          // buffer for "IN" data of short control pkts
 
 	u32		up_addr;
 	u32		up_size;
@@ -445,7 +446,7 @@ struct nx_guid {
 };
 
 #if 0
-#define LOGBUF_BEG ((unsigned*)0xffff0000)
+#define LOGBUF_BEG ((unsigned*)0xffff8000)
 #define LOGBUF_END ((unsigned*)0xffffffe0)
 
 static unsigned *logbuf = LOGBUF_BEG;
@@ -549,71 +550,23 @@ U_BOOT_CMD(
 
 static void printIntStatusFn(u32 int_status, u32 repeat, int isHandled)
 {
+    static const char *status_names[32] =  {
+        " DEV_MODE-0",      " HOST_MODE-1",     " 2",          " SOF-3",
+        " RX_FIFO_NOT_EMPTY++4"," TX_FIFO_EMPTY-5"," 6",      " 7",
+        " 8",               " 9",               " 10",         " SUSPEND+11",
+        " RESET++12",       " ENUMDONE++13",    " 14",         " 15",
+        " 16",              " 17",              " IN_EP++18",  " OUT_EP++19",
+        " 20",              " 21",              " 22",         " 23",
+        " 24",              " 25",              " 26",         " 27",
+        " CONN_ID_STS_CNG-28", " DISCON-29",    " SESSREQ-30", " RESUME+31"
+    };
+    int i;
+
     dolog0("int_status:");
-    if( int_status & INT_RESUME )
-        dolog0(" RESUME+31");
-    if( int_status & (1<<30) )
-        dolog0(" SESSREQ-30");
-    if( int_status & INT_DISCONN )
-        dolog0(" DISCON-29");
-    if( int_status & INT_CONN_ID_STS_CNG )
-        dolog0(" CONN_ID_STS_CNG-28");
-    if( int_status & (1<<27) )
-        dolog0(" 27");
-    if( int_status & (1<<26) )
-        dolog0(" 26");
-    if( int_status & (1<<25) )
-        dolog0(" 25");
-    if( int_status & (1<<24) )
-        dolog0(" 24");
-    if( int_status & (1<<23) )
-        dolog0(" 23");
-    if( int_status & (1<<22) )
-        dolog0(" 22");
-    if( int_status & (1<<21) )
-        dolog0(" 21");
-    if( int_status & (1<<20) )
-        dolog0(" 20");
-    if( int_status & INT_OUT_EP )
-        dolog0(" OUT_EP++19");
-    if( int_status & INT_IN_EP )
-        dolog0(" IN_EP++18");
-    if( int_status & (1<<17) )
-        dolog0(" 17");
-    if( int_status & (1<<16) )
-        dolog0(" 16");
-    if( int_status & (1<<15) )
-        dolog0(" 15");
-    if( int_status & (1<<14) )
-        dolog0(" 14");
-    if( int_status & INT_ENUMDONE )
-        dolog0(" ENUMDONE++13");
-    if( int_status & INT_RESET )
-        dolog0(" RESET++12");
-    if( int_status & INT_SUSPEND )
-        dolog0(" SUSPEND+11");
-    if( int_status & (1<<10) )
-        dolog0(" 10");
-    if( int_status & (1<<9) )
-        dolog0(" 9");
-    if( int_status & (1<<8) )
-        dolog0(" 8");
-    if( int_status & (1<<7) )
-        dolog0(" 7");
-    if( int_status & (1<<6) )
-        dolog0(" 6");
-    if( int_status & INT_TX_FIFO_EMPTY )
-        dolog0(" TX_FIFO_EMPTY-5");
-    if( int_status & INT_RX_FIFO_NOT_EMPTY )
-        dolog0(" RX_FIFO_NOT_EMPTY++4");
-    if( int_status & INT_SOF )
-        dolog0(" SOF-3");
-    if( int_status & (1<<2) )
-        dolog0(" 2");
-    if( int_status & INT_HOST_MODE )
-        dolog0(" HOST_MODE-1");
-    if( int_status & INT_DEV_MODE )
-        dolog0(" DEV_MODE-0");
+    for(i = 31; i >= 0; --i) {
+        if( int_status & 1 << i )
+            dolog0(status_names[i]);
+    }
     if( repeat > 1 )
         dolog1(" -- repeated %u times", repeat);
     if( isHandled )
@@ -626,20 +579,18 @@ static void print_int_status(u32 int_status, int isHandled)
 {
     static u32 int_status_prev, repeat, isHandledPrev;
 
-    if( ! isHandled && int_status == int_status_prev ) {
-        if( ++repeat >= 10000000 ) {
-            printIntStatusFn(int_status, repeat, isHandled);
-            repeat = 0;
-        }
-    }else{
+    if( isHandled || int_status != int_status_prev ) {
         if( repeat )
             printIntStatusFn(int_status_prev, repeat, isHandledPrev);
-        if( int_status )
-            printIntStatusFn(int_status, 1, isHandled);
+        if( isHandled ) {
+            printIntStatusFn(int_status, 1, 1);
+            repeat = 0;
+        }else
+            repeat = 1;
         int_status_prev = int_status;
-        repeat = 0;
         isHandledPrev = isHandled;
-    }
+    }else
+        ++repeat;
 }
 #else
 #define dolog_init()
@@ -866,6 +817,7 @@ static void ep0txwait(void)
         dieptsiz = readl(&nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
         ++i;
     }while( dieptsiz != 0 );
+    dolog1("  ep0txwait: i=%d\n", i);
 }
 
 static void nx_usb_write_in_fifo(u32 ep, u8 *buf, u32 num)
@@ -888,160 +840,159 @@ static void nx_usb_read_out_fifo(u32 ep, u8 *buf, s32 num)
     }
 }
 
-static void nx_usb_ep0_int_hndlr(void)
+static void on_setup_pkt_received(void)
 {
 	u32 buf[2];
 	struct nx_setup_packet *setup_packet = (struct nx_setup_packet *)buf;
 	u16 addr;
 
-	//dolog0("Event EP0\n");
 	dmb();
+    buf[0] = readl(&nx_otgreg->epfifo[CONTROL_EP][0]);
+    buf[1] = readl(&nx_otgreg->epfifo[CONTROL_EP][0]);
+    switch (setup_packet->request) {
+    case STANDARD_SET_ADDRESS:
+        /* Set Address Update bit */
+        addr = (setup_packet->value & 0xFF);
+        dolog1("  std SET_ADDRESS: %x\n", addr);
+        writel(1 << 18 | addr << 4 |
+            usbboot_status->speed << 0,
+            &nx_otgreg->dcsr.dcfg);
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+        dolog0("  ep0_state set to SETUP_NODATA\n");
+        break;
 
-	if (usbboot_status->ep0_state == EP0_STATE_INIT) {
-		buf[0] = readl(&nx_otgreg->epfifo[CONTROL_EP][0]);
-		buf[1] = readl(&nx_otgreg->epfifo[CONTROL_EP][0]);
+    case STANDARD_SET_DESCRIPTOR:
+        doerr0("  (warn) got std SET_DESCRIPTOR\n");
+        dolog0("  std SET_DESCRIPTOR\n");
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+        dolog0("  ep0_state set to SETUP_NODATA\n");
+        break;
 
+    case STANDARD_SET_CONFIGURATION:
+        dolog0("  std SET_CONFIGURATION\n");
+        /* Configuration value in configuration descriptor */
+        usbboot_status->cur_config = setup_packet->value;
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+        dolog0("  ep0_state set to SETUP_NODATA\n");
+        //my_printf("  (info) got std SET_CONFIGURATION\n");
+        break;
 
-		switch (setup_packet->request) {
-		case STANDARD_SET_ADDRESS:
-			/* Set Address Update bit */
-			addr = (setup_packet->value & 0xFF);
-			dolog1("  std SET_ADDRESS: %x\n", addr);
-			writel(1 << 18 | addr << 4 |
-				usbboot_status->speed << 0,
-				&nx_otgreg->dcsr.dcfg);
-			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
-            dolog0("  ep0_state set to NODATA\n");
-			break;
+    case STANDARD_GET_DESCRIPTOR:
+        usbboot_status->remain_size = setup_packet->length;
+        switch (setup_packet->value>>8) {
+        case DESCRIPTORTYPE_DEVICE:
+            dolog1("  std device descriptor len=%d\n",
+                    setup_packet->length);
+            usbboot_status->current_ptr =
+                (u8 *)usbboot_status->device_descriptor;
+            usbboot_status->current_fifo_size =
+                usbboot_status->ctrl_max_pktsize;
+            if (usbboot_status->remain_size > DEVICE_DESCRIPTOR_SIZE)
+                usbboot_status->remain_size = DEVICE_DESCRIPTOR_SIZE;
+            usbboot_status->ep0_state = EP0_STATE_SETUP_DATAIN;
+            dolog0("  ep0_state set to SETUP_DATAIN\n");
+            break;
 
-		case STANDARD_SET_DESCRIPTOR:
-			printf("  (warn) got std SET_DESCRIPTOR\n");
-			dolog0("  std SET_DESCRIPTOR\n");
-			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
-            dolog0("  ep0_state set to NODATA\n");
-			break;
+        case DESCRIPTORTYPE_CONFIGURATION:
+            dolog0("  std config descriptor\n");
+            usbboot_status->current_ptr =
+                (u8 *)usbboot_status->config_descriptor;
+            usbboot_status->current_fifo_size =
+                usbboot_status->ctrl_max_pktsize;
+            if (usbboot_status->remain_size > CONFIG_DESCRIPTOR_SIZE)
+                usbboot_status->remain_size = CONFIG_DESCRIPTOR_SIZE;
+            usbboot_status->ep0_state = EP0_STATE_SETUP_DATAIN;
+            dolog0("  ep0_state set to SETUP_DATAIN\n");
+            break;
+        default:
+            dolog0("  std ?? descriptor\n");
+            writel(readl(&nx_otgreg->dcsr.depir[0].diepctl)
+                   | DEPCTL_STALL,
+                   &nx_otgreg->dcsr.depir[0].diepctl);
+            break;
+        }
+        break;
+    case STANDARD_CLEAR_FEATURE:
+        dolog0("  std CLEAR_FEATURE\n");
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+        dolog0("  ep0_state set to SETUP_NODATA\n");
+        break;
 
-		case STANDARD_SET_CONFIGURATION:
-			dolog0("  std SET_CONFIGURATION\n");
-			/* Configuration value in configuration descriptor */
-			usbboot_status->cur_config = setup_packet->value;
-			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
-            dolog0("  ep0_state set to NODATA\n");
-			//printf("  (info) got std SET_CONFIGURATION\n");
-			break;
+    case STANDARD_SET_FEATURE:
+        dolog0("  std SET_FEATURE\n");
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+        dolog0("  ep0_state set to SETUP_NODATA\n");
+        break;
 
-#if 0
-		case STANDARD_GET_CONFIGURATION:
-			dolog0("  std GET_CONFIGURATION\n");
-			writel((1<<19)|(1<<0),
-			       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
-			/*ep0 enable, clear nak, next ep0, 8byte */
-			writel(EPEN_CNAK_EP0_8,
-			       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-			writel(usbboot_status->cur_config,
-			       &nx_otgreg->epfifo[CONTROL_EP][0]);
-			usbboot_status->ep0_state = EP0_STATE_INIT;
-			break;
-#endif
+    case STANDARD_GET_STATUS:
+        dolog0("  std GET_STATUS\n");
+        usbboot_status->pktbuf[0] = 0;
+        usbboot_status->pktbuf[1] = 0;
+        usbboot_status->current_ptr = usbboot_status->pktbuf;
+        usbboot_status->current_fifo_size =
+            usbboot_status->ctrl_max_pktsize;
+        if (usbboot_status->remain_size > 2)
+            usbboot_status->remain_size = 2;
+        usbboot_status->ep0_state = EP0_STATE_SETUP_DATAIN;
+        dolog0("  ep0_state set to SETUP_DATAIN\n");
+        break;
 
-		case STANDARD_GET_DESCRIPTOR:
-			usbboot_status->remain_size =
-				(u32)setup_packet->length;
-			switch (setup_packet->value>>8) {
-			case DESCRIPTORTYPE_DEVICE:
-                dolog0("  std device descriptor\n");
-				usbboot_status->current_ptr =
-					(u8 *)usbboot_status->device_descriptor;
-				usbboot_status->current_fifo_size =
-					usbboot_status->ctrl_max_pktsize;
-				if (usbboot_status->remain_size
-				   > DEVICE_DESCRIPTOR_SIZE)
-					usbboot_status->remain_size =
-						DEVICE_DESCRIPTOR_SIZE;
-				usbboot_status->ep0_state = EP0_STATE_GET_DSCPT;
-                dolog0("  ep0_state set to GET_DSCPT\n");
-				break;
+    case STANDARD_GET_CONFIGURATION:
+        dolog0("  std GET_CONFIGURATION\n");
+        usbboot_status->pktbuf[0] = usbboot_status->cur_config;
+        usbboot_status->current_ptr = usbboot_status->pktbuf;
+        usbboot_status->current_fifo_size =
+            usbboot_status->ctrl_max_pktsize;
+        if (usbboot_status->remain_size > 1)
+            usbboot_status->remain_size = 1;
+        usbboot_status->ep0_state = EP0_STATE_SETUP_DATAIN;
+        dolog0("  ep0_state set to SETUP_DATAIN\n");
+        break;
 
-			case DESCRIPTORTYPE_CONFIGURATION:
-                dolog0("  std config descriptor\n");
-				usbboot_status->current_ptr =
-					(u8 *)usbboot_status->config_descriptor;
-				usbboot_status->current_fifo_size =
-					usbboot_status->ctrl_max_pktsize;
-				if (usbboot_status->remain_size
-				   > CONFIG_DESCRIPTOR_SIZE)
-					usbboot_status->remain_size =
-						CONFIG_DESCRIPTOR_SIZE;
-				usbboot_status->ep0_state = EP0_STATE_GET_DSCPT;
-                dolog0("  ep0_state set to GET_DSCPT\n");
-				break;
-			default:
-                dolog0("  std ?? descriptor\n");
-				writel(readl(&nx_otgreg->dcsr.depir[0].diepctl)
-				       | DEPCTL_STALL,
-				       &nx_otgreg->dcsr.depir[0].diepctl);
-				break;
-			}
-			break;
+    case STANDARD_GET_INTERFACE:
+        dolog0("  std GET_INTERFACE\n");
+        usbboot_status->pktbuf[0] = usbboot_status->cur_interface;
+        usbboot_status->current_ptr = usbboot_status->pktbuf;
+        usbboot_status->current_fifo_size =
+            usbboot_status->ctrl_max_pktsize;
+        if (usbboot_status->remain_size > 1)
+            usbboot_status->remain_size = 1;
+        usbboot_status->ep0_state = EP0_STATE_SETUP_DATAIN;
+        dolog0("  ep0_state set to SETUP_DATAIN\n");
+        break;
 
-		case STANDARD_CLEAR_FEATURE:
-			dolog0("  std CLEAR_FEATURE\n");
-			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
-            dolog0("  ep0_state set to NODATA\n");
-			break;
+    case STANDARD_SET_INTERFACE:
+        dolog0("  std SET_INTERFACE\n");
+        usbboot_status->cur_interface = setup_packet->value;
+        usbboot_status->cur_setting = setup_packet->value;
+        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
+        dolog0("  ep0_state set to SETUP_NODATA\n");
+        break;
 
-		case STANDARD_SET_FEATURE:
-			dolog0("  std SET_FEATURE\n");
-			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
-            dolog0("  ep0_state set to NODATA\n");
-			break;
-
-		case STANDARD_GET_STATUS:
-			dolog0("  std GET_STATUS\n");
-			usbboot_status->ep0_state = EP0_STATE_GET_STATUS;
-            dolog0("  ep0_state set to GET_STATUS\n");
-			break;
-
-		case STANDARD_GET_INTERFACE:
-			dolog0("  std GET_INTERFACE\n");
-			usbboot_status->ep0_state = EP0_STATE_GET_INTERFACE;
-            dolog0("  ep0_state set to GET_INTERFACE\n");
-			break;
-
-		case STANDARD_SET_INTERFACE:
-			dolog0("  std SET_INTERFACE\n");
-			usbboot_status->cur_interface = setup_packet->value;
-			usbboot_status->cur_setting = setup_packet->value;
-			usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA;
-            dolog0("  ep0_state set to NODATA\n");
-			break;
-
-		default:
-			dolog1("  std ?? (%d)\n", setup_packet->request);
-			printf("  got std ?? (%d)\n", setup_packet->request);
-			break;
-		}
+    default:
+        doerr1("  got std ?? (%d)\n", setup_packet->request);
+        break;
 	}
 	writel((1<<19) | (usbboot_status->ctrl_max_pktsize<<0),
 	       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
-
-	if (usbboot_status->speed == USB_HIGH) {
-		/*clear nak, next ep0, 64byte */
-		writel(((1<<26)|(CONTROL_EP<<11)|(0<<0)),
-		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-	} else {
-		/*clear nak, next ep0, 8byte */
-		writel(((1<<26)|(CONTROL_EP<<11)|(3<<0)),
-		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-	}
+    if (usbboot_status->speed == USB_HIGH) {
+        /*ep0 enable, clear nak, next ep0, max 64byte */
+        writel(EPEN_CNAK_EP0_64,
+               &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
+    } else {
+        writel(EPEN_CNAK_EP0_8,
+               &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
+    }
 	dmb();
 }
 
+// Invoked after receive IN token when Tx fifo is empty
+// Fills Tx fifo depend on ep0_state
 static void nx_usb_transfer_ep0(void)
 {
 	switch (usbboot_status->ep0_state) {
 	case EP0_STATE_INIT:
-		dolog0("  EP0_STATE_INIT - STALL!\n");
+		doerr0("ERROR: IN token on ep0 INIT state - STALL\n");
         writel(readl(&nx_otgreg->dcsr.depir[CONTROL_EP].diepctl)
                | DEPCTL_STALL,
                &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
@@ -1053,12 +1004,12 @@ static void nx_usb_transfer_ep0(void)
 		/*ep0 enable, clear nak, next ep0, 8byte */
 		writel(EPEN_CNAK_EP0_8,
 		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-        usbboot_status->ep0_state = EP0_STATE_SETUP_NODATA_SENT;
+        usbboot_status->ep0_state = EP0_STATE_NODATA_SENT;
+        dolog0("  ep0_state set to NODATA_SENT\n");
 		break;
-
-	/* GET_DESCRIPTOR:DEVICE */
-	case EP0_STATE_GET_DSCPT:
-		dolog0("  storing descriptor in TxFIFO\n");
+	case EP0_STATE_SETUP_DATAIN:
+	case EP0_STATE_DATA_DATAIN:
+		dolog0("  storing data in TxFIFO\n");
 		if (usbboot_status->speed == USB_HIGH) {
 			/*ep0 enable, clear nak, next ep0, max 64byte */
 			writel(EPEN_CNAK_EP0_64,
@@ -1067,60 +1018,29 @@ static void nx_usb_transfer_ep0(void)
 			writel(EPEN_CNAK_EP0_8,
 			       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
 		}
-		if (usbboot_status->current_fifo_size
-		   >= usbboot_status->remain_size) {
+		if (usbboot_status->current_fifo_size >= usbboot_status->remain_size) {
 			writel((1<<19)|(usbboot_status->remain_size<<0),
 			       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
 			nx_usb_write_in_fifo(CONTROL_EP,
 					     usbboot_status->current_ptr,
 					     usbboot_status->remain_size);
+            usbboot_status->lastpkt_size = usbboot_status->remain_size;
 		} else {
 			writel((1<<19)|(usbboot_status->current_fifo_size<<0),
 			       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
 			nx_usb_write_in_fifo(CONTROL_EP,
 					     usbboot_status->current_ptr,
 					     usbboot_status->current_fifo_size);
-			usbboot_status->remain_size -=
-				usbboot_status->current_fifo_size;
-			usbboot_status->current_ptr +=
-				usbboot_status->current_fifo_size;
+            usbboot_status->lastpkt_size = usbboot_status->current_fifo_size;
 		}
-        ep0txwait();    // avoiding spurious TxFIFO empty interrupt
-        usbboot_status->ep0_state = EP0_STATE_DATA_SENT;
+        ep0txwait();    // avoid spurious TxFIFO empty interrupt
+        usbboot_status->ep0_state = EP0_STATE_DATAIN_SENT;
+        dolog0("  ep0_state set to DATAIN_SENT\n");
 		break;
-
-	case EP0_STATE_GET_INTERFACE:
-	case EP0_STATE_GET_CONFIG:
-		dolog0("EP0_STATE_GET_..\n");
-
-		writel((1<<19)|(1<<0),
-		       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
-		writel(EPEN_CNAK_EP0_8,
-		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-
-		if (usbboot_status->ep0_state == EP0_STATE_GET_INTERFACE)
-			writel(usbboot_status->cur_interface,
-			       &nx_otgreg->epfifo[CONTROL_EP][0]);
-        else
-			writel(usbboot_status->cur_config,
-			       &nx_otgreg->epfifo[CONTROL_EP][0]);
-        usbboot_status->ep0_state = EP0_STATE_DATA_SENT;
-		break;
-	case EP0_STATE_GET_STATUS:
-		dolog0("EP0_STATE_GET_STATUS\n");
-
-		writel((1<<19)|(2<<0),
-		       &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
-		writel(EPEN_CNAK_EP0_8,
-		       &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
-
-        writel(0, &nx_otgreg->epfifo[CONTROL_EP][0]);
-        usbboot_status->ep0_state = EP0_STATE_DATA_SENT;
-		break;
-    case EP0_STATE_DATA_SENT:
-        doerr0("ERROR! spurious Tx req on DATA_SENT\n");
+    case EP0_STATE_DATAIN_SENT:
+        doerr0("ERROR! spurious Tx req on DATAIN_SENT\n");
         break;
-    case EP0_STATE_SETUP_NODATA_SENT:
+    case EP0_STATE_NODATA_SENT:
         doerr0("ERROR! spurious Tx req on NODATA_SENT\n");
         break;
 	default:
@@ -1184,13 +1104,6 @@ static void nx_usb_int_bulkout(u32 fifo_cnt_byte)
 
 	usbboot_status->rx_buf_addr	+= fifo_cnt_byte;
 	usbboot_status->rx_size -= fifo_cnt_byte;
-
-	if (usbboot_status->rx_size <= 0) {
-		dolog0("Download completed!\n");
-
-		usbboot_status->downloading = false;
-	}
-
 	writel((1<<19)|(usbboot_status->bulkout_max_pktsize<<0),
 	       &nx_otgreg->dcsr.depor[BULK_OUT_EP].doeptsiz);
 
@@ -1245,20 +1158,20 @@ static bool nx_usb_set_init(void)
 	u16	VID = VENDORID, PID = PRODUCTID;
 
 	/* Set if Device is High speed or Full speed */
-	if (((status & 0x6) >> 1) == USB_HIGH) {
+    switch( status >> 1 & 3 ) {
+    case 0:
 		dolog0("  High Speed Detection\n");
-	} else if (((status & 0x6) >> 1) == USB_FULL) {
-		dolog0("  Full Speed Detection\n");
-	} else {
-		dolog0("**** Error:Neither High_Speed nor Full_Speed\n");
-		return false;
-	}
-
-	if (((status & 0x6) >> 1) == USB_HIGH)
 		usbboot_status->speed = USB_HIGH;
-	else
+        break;
+    case 1:
+    case 3:
+		dolog0("  Full Speed Detection\n");
 		usbboot_status->speed = USB_FULL;
-
+        break;
+    default:
+		doerr0("ERROR: low speed hub\n");
+        return false;
+    }
 	usbboot_status->rx_size = 512;
 
 	/*
@@ -1337,7 +1250,7 @@ static bool nx_usb_set_init(void)
 	return true;
 }
 
-static void nx_usb_pkt_receive(void)
+static void on_rx_fifo_nonempty(void)
 {
 	u32 rx_status;
 	u32 fifo_cnt_byte;
@@ -1346,30 +1259,43 @@ static void nx_usb_pkt_receive(void)
 
 	if ((rx_status & (0xf<<17)) == SETUP_PKT_RECEIVED) {
 		dolog0("  rx fifo: SETUP_PKT_RECEIVED (got SETUP token + data)\n");
-        switch( usbboot_status->ep0_state ) {
-        case EP0_STATE_INIT:
-            break;
-        case EP0_STATE_SETUP_NODATA_SENT:
-            doerr0("WARN: lost ACK of IN transaction in STATUS stage\n");
+        if( usbboot_status->ep0_state != EP0_STATE_INIT ) {
+            switch( usbboot_status->ep0_state ) {
+            case EP0_STATE_SETUP_DATAIN:
+            case EP0_STATE_SETUP_NODATA:
+                doerr0("WARN: lost ACK of SETUP trans\n");
+                break;
+            case EP0_STATE_NODATA_SENT:
+                doerr0("WARN: lost ACK of IN transaction in STATUS stage\n");
+                break;
+            default:
+                doerr1("ERROR! SETUP pkt ep0_state=%d - STALL\n",
+                        usbboot_status->ep0_state);
+                writel(readl(&nx_otgreg->dcsr.depir[CONTROL_EP].diepctl)
+                        | DEPCTL_STALL,
+                        &nx_otgreg->dcsr.depir[CONTROL_EP].diepctl);
+                return;
+            }
             usbboot_status->ep0_state = EP0_STATE_INIT;
             dolog0("  ep0_state set to INIT\n");
-            break;
-        default:
-            doerr1("ERROR! SETUP pkt ep0_state=%d\n",
-                    usbboot_status->ep0_state);
-            break;
         }
-		nx_usb_ep0_int_hndlr();
+		on_setup_pkt_received();
 	} else if ((rx_status & (0xf<<17)) == OUT_PKT_RECEIVED) {
 		fifo_cnt_byte = (rx_status & 0x7ff0)>>4;
 		dolog1("  rx fifo: OUT_PKT_RECEIVED (%d bytes)\n", fifo_cnt_byte);
         if( (rx_status & 0xf) == 0 ) {  // CONTROL_EP
             if( fifo_cnt_byte == 0 ) {
                 switch( usbboot_status->ep0_state ) {
-                case EP0_STATE_DATA_SENT:
+                case EP0_STATE_DATAIN_SENT:
                     doerr0("WARN: lost ACK in DATA stage\n");
                     /* no break */
-                case EP0_STATE_DATA_SENT_ACK:
+                case EP0_STATE_DATAIN_SENT_ACK:
+                    dolog0("  ep0_state set to INIT\n");
+                    usbboot_status->ep0_state = EP0_STATE_INIT;
+                    break;
+                case EP0_STATE_DATA_DATAIN:
+                    /* premature OUT packet; Linux ohci driver requests
+                     * 64 bytes of device descriptor then gets only 8 */
                     dolog0("  ep0_state set to INIT\n");
                     usbboot_status->ep0_state = EP0_STATE_INIT;
                     break;
@@ -1394,9 +1320,13 @@ static void nx_usb_pkt_receive(void)
 		}
 	} else if ((rx_status & (0xf<<17)) == GLOBAL_OUT_NAK) {
 		dolog0("  rx fifo: GLOBAL_OUT_NAK\n");
-	} else if ((rx_status & (0xf<<17)) == OUT_TRNASFER_COMPLETED) {
+	} else if ((rx_status & (0xf<<17)) == OUT_TRANSFER_COMPLETED) {
 		dolog0("  rx fifo: OUT_TRANSFER_COMPLETED "
                 "(i.e. bulk recv + ACK sent)\n");
+        if( usbboot_status->rx_size <= 0 ) {
+            dolog0("Download completed!\n");
+            usbboot_status->downloading = false;
+        }
 	} else if ((rx_status & (0xf<<17)) == SETUP_TRANSACTION_COMPLETED) {
 		dolog0("  rx fifo: SETUP_TRANSACTION_COMPLETED (i.e. ACK sent)\n");
 	} else {
@@ -1418,9 +1348,12 @@ static void nx_usb_transfer(void)
 		ep_int_status =
 			readl(&nx_otgreg->dcsr.depir[CONTROL_EP].diepint);
 
-        dolog1("  diepint0=%x (0x1 - send compl. (+recv ACK),"
-                " 0x10 - IN token recv when TxFIFO empty)\n",
-                ep_int_status);
+        dolog1("  diepint0=%x  ", ep_int_status);
+        if( ep_int_status & 0x1 )
+            dolog0(" 0x1=send compl. +recv ACK");
+        if( ep_int_status & 0x10 )
+            dolog0(" 0x10=IN token recv when TxFIFO empty");
+        dolog0("\n");
 		if (ep_int_status & INTKN_TXFEMP) {
 			while (1) {
 				if (!((readl(&nx_otgreg->gcsr.gnptxsts) &
@@ -1433,12 +1366,23 @@ static void nx_usb_transfer(void)
         if( ep_int_status & TRANSFER_DONE ) {
             u32 ep0_state = usbboot_status->ep0_state;
             switch( ep0_state ) {
-            case EP0_STATE_DATA_SENT:
-                /* received ACK - awaiting OUT transaction */
-                dolog0("  ep0_state set to DATA SENT_ACK\n");
-                usbboot_status->ep0_state = EP0_STATE_DATA_SENT_ACK;
+            case EP0_STATE_DATAIN_SENT:
+                /* received ACK ending IN transaction */
+                usbboot_status->current_ptr += usbboot_status->lastpkt_size;
+                usbboot_status->remain_size -= usbboot_status->lastpkt_size;
+                if( usbboot_status->remain_size == 0 ) {
+                    /* awaiting OUT transaction */
+                    dolog0("  ep0_state set to DATAIN_SENT_ACK\n");
+                    usbboot_status->ep0_state = EP0_STATE_DATAIN_SENT_ACK;
+                }else{
+                    /* awaiting next IN transaction */
+                    dolog0("  ep0_state set to DATA_DATAIN\n");
+                    usbboot_status->ep0_state = EP0_STATE_DATA_DATAIN;
+                    writel((1<<19) | (usbboot_status->ctrl_max_pktsize<<0),
+                            &nx_otgreg->dcsr.depir[CONTROL_EP].dieptsiz);
+                }
                 break;
-            case EP0_STATE_SETUP_NODATA_SENT:
+            case EP0_STATE_NODATA_SENT:
                 /* received ACK on IN transaction in STATUS stage */
                 dolog0("  ep0_state set to INIT\n");
                 usbboot_status->ep0_state = EP0_STATE_INIT;
@@ -1455,9 +1399,12 @@ static void nx_usb_transfer(void)
 	if (ep_int & ((1<<CONTROL_EP)<<16)) {
 		ep_int_status =
 			readl(&nx_otgreg->dcsr.depor[CONTROL_EP].doepint);
-        dolog1("  doepint0=0x%x (0x1 - recv. completed, +sent ACK),"
-                " 0x8 - SETUP phase done (+sent ACK))\n",
-                ep_int_status);
+        dolog1("  doepint0=0x%x  ", ep_int_status);
+        if( ep_int_status & 0x1 )
+            dolog0(" 0x1=recv. completed +sent ACK");
+        if( ep_int_status & 0x8 )
+            dolog0(" 0x8=SETUP phase done +sent ACK");
+        dolog0("\n");
 		writel((1<<29)|(1<<19)|(8<<0),
 		       &nx_otgreg->dcsr.depor[CONTROL_EP].doeptsiz);
 		/*ep0 enable, clear nak */
@@ -1497,21 +1444,16 @@ static void nx_udc_int_hndlr(void)
 	int_status = readl(&nx_otgreg->gcsr.gintsts); /* Core Interrupt Register */
 
 	if ((int_status & INT_IN_EP) || (int_status & INT_OUT_EP)) {
-		//dolog0("INT_IN or OUT_EP\n");
-		/* Read only register field */
 		nx_usb_transfer();
 	}
 
 	if (int_status & INT_RX_FIFO_NOT_EMPTY) {
-		//dolog0("INT_RX_FIFO_NOT_EMPTY\n");
-		/* Read only register field */
-
-        if (int_status & (INT_IN_EP | INT_OUT_EP))
+        if (int_status & (INT_IN_EP | INT_OUT_EP) )
             dolog0("  --\n");
 		writel(INT_RESUME|INT_OUT_EP|INT_IN_EP|
 			INT_ENUMDONE|INT_RESET|INT_SUSPEND,
 		       &nx_otgreg->gcsr.gintmsk);
-		nx_usb_pkt_receive();
+		on_rx_fifo_nonempty();
 		writel(INT_RESUME|INT_OUT_EP|INT_IN_EP|
 			INT_ENUMDONE|INT_RESET|INT_SUSPEND|
 			INT_RX_FIFO_NOT_EMPTY, &nx_otgreg->gcsr.gintmsk);
@@ -1740,8 +1682,6 @@ bool iusbboot(void)
         print_int_status(int_status, isHandled);
 		if( isHandled ) {
 			nx_udc_int_hndlr();
-			//writel(0xFFFFFFFF, &nx_otgreg->gcsr.gintsts);
-			//mdelay(3);
 		}
 	}
 
@@ -1765,7 +1705,6 @@ bool iusbboot(void)
         print_int_status(int_status, isHandled);
 		if( isHandled ) {
 			nx_udc_int_hndlr();
-			writel(0xFFFFFFFF, &nx_otgreg->gcsr.gintsts);
 		}
 	}
     downloaded = true;
