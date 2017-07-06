@@ -279,13 +279,17 @@
 /*-----------------------------------------------------------------------
  * ENV
  */
+#define CONFIG_BOOTARGS \
+    "console=ttySAC0,115200n8 initrd=0x49000000,0x400000 root=/dev/mmcblk1p1 console=tty1"
+
 #define CONFIG_EXTRA_ENV_SETTINGS	\
 			"fdt_high=0xffffffffffffffff"
 
 #define CONFIG_BOOTCOMMAND	\
-	"ext4load mmc 0:1 0x48000000 uImage; " \
-	"ext4load mmc 0:1 0x49000000 ramdisk.gz; " \
-	"ext4load mmc 0:1 0x4a000000 s5p6818-nanopim3.dtb; " \
-	"bootm 0x48000000 - 0x4a000000"
+	"ext4load mmc 0:1 0x48000000 boot/Image; " \
+	"mw 0x49000000 0 0x400000; " \
+	"ext4load mmc 0:1 0x49000000 boot/initrd.img; " \
+	"ext4load mmc 0:1 0x4a000000 boot/s5p6818-nanopi-m3.dtb; " \
+	"booti 0x48000000 - 0x4a000000"
 
 #endif /* __CONFIG_H__ */
