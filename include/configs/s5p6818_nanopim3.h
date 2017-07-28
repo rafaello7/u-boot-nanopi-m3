@@ -100,7 +100,7 @@
  *	U-Boot Environments
  */
 /* refer to common/env_common.c	*/
-#define CONFIG_BOOTDELAY			3
+#define CONFIG_BOOTDELAY			1
 
 /*-----------------------------------------------------------------------
  * Miscellaneous configurable options
@@ -139,6 +139,7 @@
 #define	CONFIG_CMDLINE_TAG			/* use bootargs commandline */
 #undef	CONFIG_BOOTM_NETBSD
 #undef	CONFIG_BOOTM_RTEMS
+#define CONFIG_CMD_UNZIP
 
 /*-----------------------------------------------------------------------
  * serial console configuration
@@ -213,16 +214,10 @@
 #define CONFIG_CMD_MMC
 
 #if defined(CONFIG_MMC)
-#define CONFIG_2NDBOOT_OFFSET		512
-#define CONFIG_2NDBOOT_SIZE		(64*1024)
-#define CONFIG_FIP_OFFSET		(CONFIG_2NDBOOT_OFFSET +\
-					 CONFIG_2NDBOOT_SIZE)
-#define CONFIG_FIP_SIZE			(3*1024*1024)
 #define CONFIG_ENV_IS_IN_MMC
-#define CONFIG_SYS_MMC_ENV_DEV		1
-#define	CONFIG_ENV_OFFSET		(CONFIG_FIP_OFFSET +\
-					 CONFIG_FIP_SIZE)
-#define CONFIG_ENV_SIZE			(4*1024)	/* env size */
+#define CONFIG_SYS_MMC_ENV_DEV		0
+#define	CONFIG_ENV_OFFSET		(512*1024)
+#define CONFIG_ENV_SIZE			(4*1024)
 #endif
 
 #if defined(CONFIG_MMC)
@@ -279,17 +274,16 @@
 /*-----------------------------------------------------------------------
  * ENV
  */
-#define CONFIG_BOOTARGS \
-    "console=ttySAC0,115200n8 initrd=0x49000000,0x400000 root=/dev/mmcblk1p1 console=tty1"
-
 #define CONFIG_EXTRA_ENV_SETTINGS	\
 			"fdt_high=0xffffffffffffffff"
 
+#define CONFIG_BOOTARGS \
+    "console=ttySAC0,115200n8 initrd=0x49000000,0x2000000"
+
 #define CONFIG_BOOTCOMMAND	\
-	"ext4load mmc 0:1 0x48000000 boot/Image; " \
-	"mw 0x49000000 0 0x400000; " \
-	"ext4load mmc 0:1 0x49000000 boot/initrd.img; " \
-	"ext4load mmc 0:1 0x4a000000 boot/s5p6818-nanopi-m3.dtb; " \
-	"booti 0x48000000 - 0x4a000000"
+	"echo Waiting for environment...;" \
+	"udown 0x48000000; " \
+	"env import -t -r 0x48000000; " \
+	"run bootcmd2"
 
 #endif /* __CONFIG_H__ */

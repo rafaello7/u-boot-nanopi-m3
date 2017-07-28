@@ -49,11 +49,6 @@ void board_backlight_init(void)
 }
 #endif
 
-int mmc_get_env_dev(void)
-{
-	return 0;
-}
-
 int board_init(void)
 {
 	board_gpio_init();
