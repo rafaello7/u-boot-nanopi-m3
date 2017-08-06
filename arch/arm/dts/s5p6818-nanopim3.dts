@@ -17,10 +17,71 @@
 	mmc0:mmc@c0062000 {
 		frequency = <50000000>;
 		nexell,drive_dly = <0x0>;
+		nexell,drive_shift = <0x02>;
+		nexell,sample_dly = <0x00>;
+		nexell,sample_shift = <0x01>;
+		status = "okay";
+	};
+
+	mmc2:mmc@c0069000 {
+		frequency = <50000000>;
+		nexell,drive_dly = <0x0>;
 		nexell,drive_shift = <0x03>;
 		nexell,sample_dly = <0x00>;
 		nexell,sample_shift = <0x02>;
+		nexell,ddr = <1>;
 		status = "okay";
+	};
+
+	dp0:dp@c0102800 {
+		lcd-type = "hdmi";
+		status = "okay";
+
+		dp-device {
+			hdmi {
+				preset = <0>;
+			};
+
+		};
+		dp-planes {
+			layer_top {
+				screen_width = <280>;
+				screen_height = <120>;
+				back_color = <0>;
+				video_prior = <0>;
+			};
+			layer_0 {
+				fb_base = <0x46000000>;
+				left = <30>;
+				top = <20>;
+				width = <1220>;
+				height = <680>;
+				pixel_byte = <2>;
+				/* possible format values for rgb layer:
+				 *	r5g6b5		0x44320000
+				 *	b5g6r5		0xc4320000
+				 *	x1r5g5b5	0x43420000
+				 *	x1b5g5r5	0xc3420000
+				 *	x4r4g4b4	0x42110000
+				 *	x4b4g4r4	0xc2110000
+				 *	x8r3g3b2	0x41200000
+				 *	x8b3g3r2	0xc1200000
+				 *	a1r5g5b5	0x33420000
+				 *	a1b5g5r5	0xb3420000
+				 *	a4r4g4b4	0x22110000
+				 *	a4b4g4r4	0xa2110000
+				 *	a8r3g3b2	0x11200000
+				 *	a8b3g3r2	0x91200000
+				 *	r8g8b8		0x46530000
+				 *	b8g8r8		0xc6530000
+				 *	x8r8g8b8	0x46530000
+				 *	x8b8g8r8	0xc6530000
+				 *	a8r8g8b8	0x06530000
+				 *	a8b8g8r8	0x86530000
+				 */
+				format = <0x44320000>;
+			};
+		};
 	};
 
 	dwc2otg@c0040000 {

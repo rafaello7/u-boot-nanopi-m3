@@ -646,7 +646,7 @@ static void memsetl(int *p, int c, int v)
 #endif
 
 #ifndef VIDEO_HW_BITBLT
-static void memcpyl(int *d, int *s, int c)
+static void memcpyl(long *d, long *s, int c)
 {
 	while (c--)
 		*(d++) = *(s++);
@@ -709,7 +709,7 @@ static void console_scrollup(void)
 		);
 #else
 	memcpyl(CONSOLE_ROW_FIRST, CONSOLE_ROW_FIRST + rows * CONSOLE_ROW_SIZE,
-		(CONSOLE_SIZE - CONSOLE_ROW_SIZE * rows) >> 2);
+		(CONSOLE_SIZE - CONSOLE_ROW_SIZE * rows) / sizeof(long));
 #endif
 	/* clear the last one */
 	for (i = 1; i <= rows; i++)
@@ -1150,8 +1150,8 @@ __weak void video_set_lut(unsigned int index, unsigned char r,
 }
 
 #define FILL_32BIT_X888RGB(r,g,b) {			\
-	*(unsigned long *)fb =				\
-		SWAP32((unsigned long)(((r<<16) |	\
+	*(unsigned*)fb =				\
+		SWAP32((unsigned)(((r<<16) |	\
 					(g<<8)  |	\
 					 b)));		\
 	fb += 4;					\
@@ -1896,8 +1896,8 @@ static void plot_logo_or_black(void *screen, int x, int y, int black)
 							 (b >> 3)));
 				break;
 			case GDF_32BIT_X888RGB:
-				*(unsigned long *) dest =
-					SWAP32((unsigned long) (
+				*(unsigned*) dest =
+					SWAP32((unsigned) (
 							(r << 16) |
 							(g <<  8) |
 							 b));
@@ -2081,7 +2081,7 @@ static int video_init(void)
 	if (pGD == NULL)
 		return -1;
 
-	video_fb_address = (void *) VIDEO_FB_ADRS;
+	video_fb_address = (void*)(long)VIDEO_FB_ADRS;
 #ifdef CONFIG_VIDEO_HW_CURSOR
 	video_init_hw_cursor(VIDEO_FONT_WIDTH, VIDEO_FONT_HEIGHT);
 #endif

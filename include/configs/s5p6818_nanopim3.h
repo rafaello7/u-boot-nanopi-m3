@@ -215,7 +215,7 @@
 
 #if defined(CONFIG_MMC)
 #define CONFIG_ENV_IS_IN_MMC
-#define CONFIG_SYS_MMC_ENV_DEV		0
+#define CONFIG_SYS_MMC_ENV_DEV		1
 #define	CONFIG_ENV_OFFSET		(512*1024)
 #define CONFIG_ENV_SIZE			(4*1024)
 #endif
@@ -263,6 +263,19 @@
 #define CONFIG_BACKLIGHT_INV			1
 #define CONFIG_BACKLIGHT_DUTY			50
 #define CONFIG_BACKLIGHT_HZ			10000
+
+/* Video
+ */
+#ifdef CONFIG_VIDEO_NX
+#define CONFIG_VIDEO
+#define CONFIG_CFB_CONSOLE
+#define CONFIG_VGA_AS_SINGLE_DEVICE
+#define CONFIG_VIDEO_LOGO
+#define CONFIG_CMD_BMP
+#define CONFIG_VIDEO_SW_CURSOR
+#define VIDEO_FB_16BPP_WORD_SWAP
+#define CONFIG_VIDEO_BMP_LOGO
+#endif
 
 /*-----------------------------------------------------------------------
  * OF_CONTROL
