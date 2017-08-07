@@ -778,12 +778,13 @@ void stdio_print_current_devices(void)
 int console_init_r(void)
 {
 	char *stdinname, *stdoutname, *stderrname;
-	struct stdio_dev *inputdev = NULL, *outputdev = NULL, *errdev = NULL;
 #ifdef CONFIG_SYS_CONSOLE_ENV_OVERWRITE
 	int i;
 #endif /* CONFIG_SYS_CONSOLE_ENV_OVERWRITE */
 #ifdef CONFIG_CONSOLE_MUX
-	int iomux_err = 0;
+	int iomux_done = 0;
+#else
+	struct stdio_dev *inputdev = NULL, *outputdev = NULL, *errdev = NULL;
 #endif
 
 	/* set default handlers at first */
@@ -799,18 +800,27 @@ int console_init_r(void)
 	stdoutname = getenv("stdout");
 	stderrname = getenv("stderr");
 
+#ifdef CONFIG_CONSOLE_MUX
+	if (OVERWRITE_CONSOLE == 0) {	/* if not overwritten by config switch */
+		if( stdinname != NULL && iomux_doenv(stdin, stdinname) == 0 )
+			iomux_done |= 1 << stdin;
+		if( stdoutname != NULL && iomux_doenv(stdout, stdoutname) == 0 )
+			iomux_done |= 1 << stdout;
+		if( stderrname != NULL && iomux_doenv(stderr, stderrname) == 0 )
+			iomux_done |= 1 << stderr;
+	}
+	/* if the devices are overwritten or not found, use default device */
+	if( (iomux_done & 1 << stdin) == 0 )
+		iomux_doenv(stdin, "serial");
+	if( (iomux_done & 1 << stdout) == 0 )
+		iomux_doenv(stdout, "serial");
+	if( (iomux_done & 1 << stderr) == 0 )
+		iomux_doenv(stderr, "serial");
+#else
 	if (OVERWRITE_CONSOLE == 0) {	/* if not overwritten by config switch */
 		inputdev  = search_device(DEV_FLAGS_INPUT,  stdinname);
 		outputdev = search_device(DEV_FLAGS_OUTPUT, stdoutname);
 		errdev    = search_device(DEV_FLAGS_OUTPUT, stderrname);
-#ifdef CONFIG_CONSOLE_MUX
-		iomux_err = iomux_doenv(stdin, stdinname);
-		iomux_err += iomux_doenv(stdout, stdoutname);
-		iomux_err += iomux_doenv(stderr, stderrname);
-		if (!iomux_err)
-			/* Successful, so skip all the code below. */
-			goto done;
-#endif
 	}
 	/* if the devices are overwritten or not found, use default device */
 	if (inputdev == NULL) {
@@ -835,9 +845,6 @@ int console_init_r(void)
 		/* need to set a console if not done above. */
 		console_doenv(stdin, inputdev);
 	}
-
-#ifdef CONFIG_CONSOLE_MUX
-done:
 #endif
 
 #ifndef CONFIG_SYS_CONSOLE_INFO_QUIET
