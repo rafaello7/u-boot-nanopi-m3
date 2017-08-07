@@ -49,6 +49,36 @@ void board_backlight_init(void)
 }
 #endif
 
+int mmc_get_env_dev(void)
+{
+	static int envDev = -1;
+	int bl1LoadEmmc, ubootLoadPort;
+
+	if( envDev == -1 ) {
+		bl1LoadEmmc = readl(PHY_BASEADDR_CLKPWR + SYSRSTCONFIG) >> 19 & 1;
+		printf("loaded from %s", bl1LoadEmmc ? "emmc" : "SD");
+		ubootLoadPort = readl(SCR_ARM_SECOND_BOOT_REG1);
+		switch( ubootLoadPort ) {
+		case EMMC_PORT_NUM:
+			envDev = 0;
+			if( ! bl1LoadEmmc )
+				printf("+emmc");
+			break;
+		case SD_PORT_NUM:
+			if( bl1LoadEmmc )
+				printf("+SD");
+			envDev = 1;
+			break;
+		default:
+			printf("+unknown(%d)", ubootLoadPort);
+			envDev = 1;
+			break;
+		}
+		printf(", getting env from MMC %d\n", envDev);
+	}
+	return envDev;
+}
+
 int board_init(void)
 {
 	board_gpio_init();
