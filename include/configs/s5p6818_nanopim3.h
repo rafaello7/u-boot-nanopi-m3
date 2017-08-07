@@ -275,6 +275,8 @@
 #define CONFIG_VIDEO_SW_CURSOR
 #define VIDEO_FB_16BPP_WORD_SWAP
 #define CONFIG_VIDEO_BMP_LOGO
+#define CONFIG_CONSOLE_MUX
+#define CONFIG_SYS_CONSOLE_IS_IN_ENV
 #endif
 
 /*-----------------------------------------------------------------------
@@ -288,7 +290,10 @@
  * ENV
  */
 #define CONFIG_EXTRA_ENV_SETTINGS	\
-			"fdt_high=0xffffffffffffffff"
+			"fdt_high=0xffffffffffffffff\0" \
+			"stdin=serial\0" \
+			"stdout=serial,vga\0" \
+			"stderr=serial,vga"
 
 #define CONFIG_BOOTARGS \
     "console=ttySAC0,115200n8 initrd=0x49000000,0x2000000"

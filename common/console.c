@@ -905,8 +905,12 @@ int console_init_r(void)
 		console_setfile(stdout, outputdev);
 		console_setfile(stderr, outputdev);
 #ifdef CONFIG_CONSOLE_MUX
+		console_devices[stdout] = malloc(sizeof(struct stdio_dev**));
 		console_devices[stdout][0] = outputdev;
+		cd_count[stdout] = 1;
+		console_devices[stderr] = malloc(sizeof(struct stdio_dev**));
 		console_devices[stderr][0] = outputdev;
+		cd_count[stderr] = 1;
 #endif
 	}
 
@@ -914,7 +918,9 @@ int console_init_r(void)
 	if (inputdev != NULL) {
 		console_setfile(stdin, inputdev);
 #ifdef CONFIG_CONSOLE_MUX
+		console_devices[stdin] = malloc(sizeof(struct stdio_dev**));
 		console_devices[stdin][0] = inputdev;
+		cd_count[stdin] = 1;
 #endif
 	}
 
