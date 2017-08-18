@@ -38,10 +38,7 @@
 		status = "okay";
 
 		dp-device {
-			hdmi {
-				preset = <0>;
-			};
-
+			preset = <0>; // 0 - 1280x720, 1 - 1920x1080
 		};
 		dp-planes {
 			layer_top {
