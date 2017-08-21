@@ -47,7 +47,7 @@
 				back_color = <0>;
 				video_prior = <0>;
 			};
-			layer_0 {
+			layer_1 {
 				fb_base = <0x46000000>;
 				left = <30>;
 				top = <20>;
