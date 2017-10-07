@@ -86,7 +86,7 @@
 /* board_init_f->init_sequence, call print_cpuinfo */
 #define	CONFIG_DISPLAY_CPUINFO
 /* board_init_f, CONFIG_SYS_ICACHE_OFF */
-#define	CONFIG_SYS_DCACHE_OFF
+/*#define	CONFIG_SYS_DCACHE_OFF*/
 /* board_init_r, call arch_misc_init */
 #define	CONFIG_ARCH_MISC_INIT
 /*#define	CONFIG_SYS_ICACHE_OFF*/
@@ -108,7 +108,7 @@
 #ifdef CONFIG_SYS_PROMPT
 #undef CONFIG_SYS_PROMPT
 /* Monitor Command Prompt   */
-#define CONFIG_SYS_PROMPT			"s5p6818# "
+#define CONFIG_SYS_PROMPT			"nanoPi# "
 #endif
 /* undef to save memory	   */
 #define CONFIG_SYS_LONGHELP
