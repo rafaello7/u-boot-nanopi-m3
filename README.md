@@ -1,16 +1,17 @@
-# U-boot for NanoPi M3
+## U-boot for NanoPi M3
 
 Based on [u-boot-artik](https://github.com/SamsungARTIK/u-boot-artik)
 to run Linux 64-bit kernel on Nanopi M3.
 
 
-## Installation
+### Installation
 
 If the Debian was installed using
 [debian installer](https://github.com/rafaello7/debian-installer-nanopi-m3),
-the following command (invoked as root) should install the new version:
+it is recommended to use _nano-blembed_ utility from
+[nanopi-boot-tools](https://github.com/rafaello7/nanopi-boot-tools)
+to install the new version.
 
-	dd if=u-boot.bin of=/dev/mmcblk2 seek=65
 
 ### Compilation
 
