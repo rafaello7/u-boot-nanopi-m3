@@ -14,6 +14,7 @@
 
 #include <asm/arch/nexell.h>
 #include <asm/arch/nx_gpio.h>
+#include <u-boot/md5.h>
 
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -106,8 +107,38 @@ void dram_init_banksize(void)
 	gd->bd->bi_dram[0].size  = CONFIG_SYS_SDRAM_SIZE;
 }
 
+#define ETHER_MAC_TAG	"ethmac"
+
 int board_late_init(void)
 {
+	if( getenv("ethaddr") == NULL ) {
+		char tmp[18];
+		unsigned char addr[6];
+		u32 hash[20];
+		u32 *ec2 = (u32*)0xc006705c;
+		u32 *ecid = (u32*)0xc0067000;
+
+		memset(hash, 0, sizeof(hash));
+		memcpy(hash + 12, ETHER_MAC_TAG, sizeof(ETHER_MAC_TAG));
+		while( (readl(ec2) & 0x8000) == 0 )
+			udelay(100);
+		hash[4] = readl(ecid);
+		hash[5] = readl(ecid + 1);
+		hash[6] = readl(ecid + 2);
+		hash[7] = readl(ecid + 3);
+
+		MD5Transform(hash, hash + 4);
+		hash[0] ^= hash[2];
+		hash[1] ^= hash[3];
+
+		memcpy(addr, (char *)hash, 6);
+		addr[0] &= 0xfe;	/* clear multicast bit */
+		addr[0] |= 0x02;
+
+		sprintf(tmp, "%02x:%02x:%02x:%02x:%02x:%02x",
+				addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+		setenv("ethaddr", tmp);
+	}
 	return 0;
 }
 

@@ -33,9 +33,6 @@
 #endif /* USE_HOSTCC */
 #include <u-boot/md5.h>
 
-static void
-MD5Transform(__u32 buf[4], __u32 const in[16]);
-
 /*
  * Note: this code is harmless on little-endian machines.
  */
@@ -179,7 +176,7 @@ MD5Final(unsigned char digest[16], struct MD5Context *ctx)
  * reflect the addition of 16 longwords of new data.  MD5Update blocks
  * the data and converts bytes into longwords for this routine.
  */
-static void
+void
 MD5Transform(__u32 buf[4], __u32 const in[16])
 {
 	register __u32 a, b, c, d;

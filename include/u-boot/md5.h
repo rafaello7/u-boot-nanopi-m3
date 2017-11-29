@@ -31,4 +31,6 @@ void md5 (unsigned char *input, int len, unsigned char output[16]);
 void md5_wd (unsigned char *input, int len, unsigned char output[16],
 		unsigned int chunk_sz);
 
+void MD5Transform(__u32 buf[4], __u32 const in[16]);
+
 #endif /* _MD5_H */
